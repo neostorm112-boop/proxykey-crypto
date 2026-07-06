@@ -54,6 +54,33 @@ npm test        # 18 tests: roundtrip, AAD binding, tamper detection, zeroing
 npm run build
 ```
 
+## Design notes (anticipated review questions)
+
+Reviewers of crypto code tend to ask the same good questions. Answers up
+front:
+
+- **Random 96-bit GCM nonces — collision bounds?** Each DEK encrypts exactly
+  one plaintext, so nonce reuse under a DEK is impossible by construction.
+  The KEK performs one wrap per secret; the NIST random-nonce bound
+  (~2³² operations per key) is orders of magnitude above any realistic
+  secret count here, and `keyVersion` exists precisely so the KEK can be
+  rotated long before bounds matter.
+- **`decryptSecret` returns a `string` — strings can't be wiped.** True, and
+  a JS-platform limitation we accept deliberately: the consumer immediately
+  places the value into an outbound request header and drops the reference.
+  Returning a `Buffer` would only narrow the window, not close it — V8 may
+  copy buffer contents during internal operations anyway. The `fill(0)`
+  calls are best-effort hygiene, not a guarantee, and we say so rather than
+  pretend otherwise.
+- **KEK length is validated, entropy is not.** The provider enforces
+  32 decoded bytes and the docs mandate `openssl rand -base64 32`. A
+  passphrase-derived KEK is out of scope on purpose: there is no KDF here
+  because the KEK is expected to BE a random key, not a password.
+- **Why is the wrapped DEK not AAD-bound to the secret id?** So a future KEK
+  rotation can re-wrap DEKs in bulk without knowing record context. The data
+  ciphertext IS bound to its record id, which is where the swap-attack
+  protection matters.
+
 ## License
 
 MIT. Reuse it, audit it, or build your own credential proxy on top — the
